@@ -64,9 +64,7 @@ async def detect_voice(file: UploadFile = File(...)):
     print(f"🔍 speech_timestamps: {speech_timestamps}")
 
     speech_detected = len(speech_timestamps) > 0
-
     return {"speech_detected": speech_detected}
-
 
 # ------------------------------
 # 🎤 Transcribe + respond + TTS
@@ -141,8 +139,3 @@ async def transcribe_and_respond(file: UploadFile = File(...)):
         return {"error": "TTS failed", "details": tts_resp.text}
 
     return StreamingResponse(tts_resp.iter_content(1024), media_type="audio/mpeg")
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
