@@ -19,75 +19,85 @@ export const useAudioRecorder = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
-const sendAudio = useCallback(async (audioBlob: Blob) => {
-  if (!audioBlob) return;
+  const sendAudio = useCallback(async (audioBlob: Blob) => {
+    if (!audioBlob) return;
 
-  setAudioState(prev => ({ ...prev, isProcessing: true, error: null }));
+    setAudioState(prev => ({ ...prev, isProcessing: true, error: null }));
 
-  try {
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.wav');
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'recording.wav');
 
-    const response = await fetch('https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond', {
-      method: 'POST',
-      body: formData,
-    });
+      const response = await fetch(
+        'https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond',
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
 
-    if (!response.ok) throw new Error('Failed to process audio');
+      if (!response.ok) throw new Error('Failed to process audio');
 
-    const audioArrayBuffer = await response.arrayBuffer();
-    const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
-    const audioUrl = URL.createObjectURL(responseAudioBlob);
+      const audioArrayBuffer = await response.arrayBuffer();
+      const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(responseAudioBlob);
 
-    setAudioState(prev => ({
-      ...prev,
-      responseAudio: audioUrl,
-      isProcessing: false,
-    }));
-
-    // 🔊 Auto-play the audio
-    const audio = new Audio(audioUrl);
-    audioRef.current = audio;
-
-    audio.onplay = () => setAudioState(prev => ({ ...prev, isPlaying: true }));
-    audio.onended = () => setAudioState(prev => ({ ...prev, isPlaying: false }));
-    audio.onerror = () => {
-      console.error('❌ Playback error');
       setAudioState(prev => ({
         ...prev,
-        isPlaying: false,
-        error: 'Failed to play response audio',
+        responseAudio: audioUrl,
+        isProcessing: false,
       }));
-    };
 
-    await audio.play();
+      // 🔊 Auto-play the response audio
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
 
-  } catch (error) {
-    console.error('❌ sendAudio error:', error);
-    setAudioState(prev => ({
-      ...prev,
-      error: 'Failed to process audio. Please try again.',
-      isProcessing: false,
-    }));
-  }
-}, []);
+      audio.onplay = () => setAudioState(prev => ({ ...prev, isPlaying: true }));
+      audio.onended = () => setAudioState(prev => ({ ...prev, isPlaying: false }));
+      audio.onerror = () => {
+        console.error('❌ Playback error');
+        setAudioState(prev => ({
+          ...prev,
+          isPlaying: false,
+          error: 'Failed to play response audio',
+        }));
+      };
 
+      try {
+        await audio.play();
+      } catch (playError) {
+        console.error('🔊 Audio playback failed:', playError);
+        setAudioState(prev => ({
+          ...prev,
+          error: 'Audio playback failed.',
+          isPlaying: false,
+        }));
+      }
+
+    } catch (error) {
+      console.error('❌ sendAudio error:', error);
+      setAudioState(prev => ({
+        ...prev,
+        error: 'Transcription or TTS failed. Please try again.',
+        isProcessing: false,
+      }));
+    }
+  }, []);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
     }
 
-    // Clean up silence detection
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
-    silenceTimerRef.current = null;
 
     if (audioContextRef.current) {
       audioContextRef.current.close();
+      audioContextRef.current = null;
     }
-    audioContextRef.current = null;
   }, []);
 
   const monitorSilence = (stream: MediaStream) => {
@@ -113,13 +123,13 @@ const sendAudio = useCallback(async (audioBlob: Blob) => {
         sum += deviation * deviation;
       }
       const rms = Math.sqrt(sum / bufferLength);
-      const silenceThreshold = 8; // adjust if needed
+      const silenceThreshold = 8;
 
       if (rms < silenceThreshold) {
         if (!silenceTimerRef.current) {
           silenceTimerRef.current = window.setTimeout(() => {
             stopRecording();
-          }, 3000); // stop after 1.5s of silence
+          }, 3000); // 3s of silence
         }
       } else {
         if (silenceTimerRef.current) {
@@ -162,6 +172,7 @@ const sendAudio = useCallback(async (audioBlob: Blob) => {
       };
 
       mediaRecorder.start();
+
       setAudioState(prev => ({
         ...prev,
         isRecording: true,
