@@ -20,73 +20,59 @@ export const useAudioRecorder = () => {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
   /* ----------------------------- sendAudio ----------------------------- */
-const sendAudio = useCallback(async (audioBlob: Blob) => {
-  if (!audioBlob) return;
+  const sendAudio = useCallback(async (audioBlob: Blob) => {
+    if (!audioBlob) return;
 
-  setAudioState(prev => ({ ...prev, isProcessing: true, error: null }));
+    setAudioState(prev => ({ ...prev, isProcessing: true, error: null }));
 
-  try {
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.wav');
-
-    const response = await fetch('https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) throw new Error('Failed to process audio');
-
-    const audioArrayBuffer = await response.arrayBuffer();
-    const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
-    const audioUrl = URL.createObjectURL(responseAudioBlob);
-
-    const audio = new Audio(audioUrl);
-    audioRef.current = audio;
-
-    // Clear previous event handlers
-    audio.onplay = null;
-    audio.onended = null;
-    audio.onerror = null;
-
-    audio.onplay = () => {
-      setAudioState(prev => ({ ...prev, isPlaying: true, error: null }));
-    };
-
-    audio.onended = () => {
-      setAudioState(prev => ({ ...prev, isPlaying: false }));
-    };
-
-    // ⛔ Don’t trigger this unless .play() really fails
     try {
-      await audio.play();
-    } catch (playbackError) {
-      console.error('❌ Playback failed:', playbackError);
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'recording.wav');
+
+      const response = await fetch(
+        'https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond',
+        { method: 'POST', body: formData }
+      );
+
+      if (!response.ok) throw new Error('Failed to process audio');
+
+      const audioArrayBuffer = await response.arrayBuffer();
+      const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(responseAudioBlob);
+
       setAudioState(prev => ({
         ...prev,
-        error: 'Audio playback failed. Try again.',
-        isPlaying: false,
+        responseAudio: audioUrl,
+        isProcessing: false,
       }));
-      return;
+
+      /* 🔊 Auto‑play the response audio */
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onplay = ()   => setAudioState(p => ({ ...p, isPlaying: true }));
+      audio.onended = ()  => setAudioState(p => ({ ...p, isPlaying: false }));
+      audio.onerror = ()  => {
+        console.error('❌ Playback error (onerror)');
+        setAudioState(p => ({ ...p, error: 'Failed to play response audio', isPlaying: false }));
+      };
+
+      audio.play()
+        .then(() => console.log('🔊 Playback started successfully'))
+        .catch(playErr => {
+          console.error('🔊 Playback failed:', playErr);
+          setAudioState(p => ({ ...p, error: 'Audio playback failed.', isPlaying: false }));
+        });
+
+    } catch (err) {
+      console.error('❌ sendAudio error:', err);
+      setAudioState(prev => ({
+        ...prev,
+        error: 'Transcription or TTS failed. Please try again.',
+        isProcessing: false,
+      }));
     }
-
-    // Only set audio state after successful playback
-    setAudioState(prev => ({
-      ...prev,
-      responseAudio: audioUrl,
-      isProcessing: false,
-      error: null,
-    }));
-
-  } catch (error) {
-    console.error('❌ sendAudio error:', error);
-    setAudioState(prev => ({
-      ...prev,
-      error: 'Failed to process audio. Please try again.',
-      isProcessing: false,
-    }));
-  }
-}, []);
-
+  }, []);
 
   /* --------------------------- recording helpers --------------------------- */
   const stopRecording = useCallback(() => {
