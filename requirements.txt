@@ -5,3 +5,4 @@ requests
 aiofiles
 python-dotenv
 gunicorn
+torch
