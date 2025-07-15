@@ -53,7 +53,7 @@ export const useAudioRecorder = () => {
       audio.onplay = ()   => setAudioState(p => ({ ...p, isPlaying: true }));
       audio.onended = ()  => setAudioState(p => ({ ...p, isPlaying: false }));
       audio.onerror = ()  => {
-        console.error('❌ Playback error (onerror)');
+        console.error('❌ Playback error(onerror)');
         setAudioState(p => ({ ...p, error: 'Failed to play response audio', isPlaying: false }));
       };
 
