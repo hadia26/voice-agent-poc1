@@ -19,39 +19,59 @@ export const useAudioRecorder = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
-  const sendAudio = useCallback(async (audioBlob: Blob) => {
-    if (!audioBlob) return;
+const sendAudio = useCallback(async (audioBlob: Blob) => {
+  if (!audioBlob) return;
 
-    setAudioState(prev => ({ ...prev, isProcessing: true, error: null }));
+  setAudioState(prev => ({ ...prev, isProcessing: true, error: null }));
 
-    try {
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'recording.wav');
+  try {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'recording.wav');
 
-      fetch('https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond', {
-        method: 'POST',
-        body: formData,
-      });
+    const response = await fetch('https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond', {
+      method: 'POST',
+      body: formData,
+    });
 
-      if (!response.ok) throw new Error('Failed to process audio');
+    if (!response.ok) throw new Error('Failed to process audio');
 
-      const audioArrayBuffer = await response.arrayBuffer();
-      const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
-      const audioUrl = URL.createObjectURL(responseAudioBlob);
+    const audioArrayBuffer = await response.arrayBuffer();
+    const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
+    const audioUrl = URL.createObjectURL(responseAudioBlob);
 
+    setAudioState(prev => ({
+      ...prev,
+      responseAudio: audioUrl,
+      isProcessing: false,
+    }));
+
+    // 🔊 Auto-play the audio
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+
+    audio.onplay = () => setAudioState(prev => ({ ...prev, isPlaying: true }));
+    audio.onended = () => setAudioState(prev => ({ ...prev, isPlaying: false }));
+    audio.onerror = () => {
+      console.error('❌ Playback error');
       setAudioState(prev => ({
         ...prev,
-        responseAudio: audioUrl,
-        isProcessing: false,
+        isPlaying: false,
+        error: 'Failed to play response audio',
       }));
-    } catch (error) {
-      setAudioState(prev => ({
-        ...prev,
-        error: 'Failed to process audio. Please try again.',
-        isProcessing: false,
-      }));
-    }
-  }, []);
+    };
+
+    await audio.play();
+
+  } catch (error) {
+    console.error('❌ sendAudio error:', error);
+    setAudioState(prev => ({
+      ...prev,
+      error: 'Failed to process audio. Please try again.',
+      isProcessing: false,
+    }));
+  }
+}, []);
+
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current) {
