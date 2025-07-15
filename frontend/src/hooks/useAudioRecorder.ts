@@ -19,7 +19,6 @@ export const useAudioRecorder = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
-  /* ----------------------------- sendAudio ----------------------------- */
   const sendAudio = useCallback(async (audioBlob: Blob) => {
     if (!audioBlob) return;
 
@@ -31,13 +30,16 @@ export const useAudioRecorder = () => {
 
       const response = await fetch(
         'https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond',
-        { method: 'POST', body: formData }
+        {
+          method: 'POST',
+          body: formData,
+        }
       );
 
       if (!response.ok) throw new Error('Failed to process audio');
 
-      const audioArrayBuffer = await response.arrayBuffer();
-      const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
+      const arrayBuffer = await response.arrayBuffer();
+      const responseAudioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(responseAudioBlob);
 
       setAudioState(prev => ({
@@ -46,24 +48,23 @@ export const useAudioRecorder = () => {
         isProcessing: false,
       }));
 
-      /* 🔊 Auto‑play the response audio */
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
 
-      audio.onplay = ()   => setAudioState(p => ({ ...p, isPlaying: true }));
-      audio.onended = ()  => setAudioState(p => ({ ...p, isPlaying: false }));
-      audio.onerror = ()  => {
-        console.error('❌ Playback error(onerror)');
-        setAudioState(p => ({ ...p, error: 'Failed to play response audio', isPlaying: false }));
-      };
+      audio.onplay = () => setAudioState(p => ({ ...p, isPlaying: true }));
+      audio.onended = () => setAudioState(p => ({ ...p, isPlaying: false }));
 
-      audio.play()
-        .then(() => console.log('🔊 Playback started successfully'))
-        .catch(playErr => {
-          console.error('🔊 Playback failed:', playErr);
-          setAudioState(p => ({ ...p, error: 'Audio playback failed.', isPlaying: false }));
-        });
-
+      try {
+        await audio.play();
+        console.log('🔊 Playback started successfully');
+      } catch (err) {
+        console.warn('⚠️ Autoplay blocked or playback failed:', err);
+        setAudioState(p => ({
+          ...p,
+          error: 'Autoplay blocked. Tap play to hear the response.',
+          isPlaying: false,
+        }));
+      }
     } catch (err) {
       console.error('❌ sendAudio error:', err);
       setAudioState(prev => ({
@@ -74,7 +75,6 @@ export const useAudioRecorder = () => {
     }
   }, []);
 
-  /* --------------------------- recording helpers --------------------------- */
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -110,7 +110,7 @@ export const useAudioRecorder = () => {
 
       if (rms < silenceThreshold) {
         if (!silenceTimerRef.current) {
-          silenceTimerRef.current = window.setTimeout(stopRecording, 3000); // 3 s silence
+          silenceTimerRef.current = window.setTimeout(stopRecording, 3000);
         }
       } else if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
@@ -142,15 +142,23 @@ export const useAudioRecorder = () => {
       };
 
       mediaRecorder.start();
-      setAudioState(p => ({ ...p, isRecording: true, error: null, responseAudio: null, audioBlob: null }));
-      monitorSilence(stream);
+      setAudioState(p => ({
+        ...p,
+        isRecording: true,
+        error: null,
+        responseAudio: null,
+        audioBlob: null,
+      }));
 
+      monitorSilence(stream);
     } catch {
-      setAudioState(p => ({ ...p, error: 'Failed to access microphone. Please check permissions.' }));
+      setAudioState(p => ({
+        ...p,
+        error: 'Failed to access microphone. Please check permissions.',
+      }));
     }
   }, [sendAudio]);
 
-  /* ------------------------------ playback controls ------------------------------ */
   const playResponse = useCallback((audioUrl?: string) => {
     const urlToPlay = audioUrl || audioState.responseAudio;
     if (!urlToPlay) return;
@@ -163,11 +171,17 @@ export const useAudioRecorder = () => {
     const audio = new Audio(urlToPlay);
     audioRef.current = audio;
 
-    audio.onplay = ()  => setAudioState(p => ({ ...p, isPlaying: true }));
+    audio.onplay = () => setAudioState(p => ({ ...p, isPlaying: true }));
     audio.onended = () => setAudioState(p => ({ ...p, isPlaying: false }));
-    audio.onerror = ()  => setAudioState(p => ({ ...p, isPlaying: false, error: 'Failed to play response audio' }));
 
-    audio.play().catch(err => console.error('Playback failed:', err));
+    audio.play().catch(err => {
+      console.error('🔊 Manual playback failed:', err);
+      setAudioState(p => ({
+        ...p,
+        isPlaying: false,
+        error: 'Could not play audio. Please try again.',
+      }));
+    });
   }, [audioState.responseAudio]);
 
   const stopPlaying = useCallback(() => {
@@ -178,14 +192,18 @@ export const useAudioRecorder = () => {
     }
   }, []);
 
-  /* ------------------------------ misc helpers ------------------------------ */
-  const clearError = useCallback(() => setAudioState(p => ({ ...p, error: null })), []);
+  const clearError = useCallback(() => {
+    setAudioState(p => ({ ...p, error: null }));
+  }, []);
 
   const reset = useCallback(() => {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    if (audioState.responseAudio) URL.revokeObjectURL(audioState.responseAudio);
-
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioState.responseAudio) {
+      URL.revokeObjectURL(audioState.responseAudio);
+    }
     setAudioState({
       isRecording: false,
       isProcessing: false,
@@ -196,7 +214,6 @@ export const useAudioRecorder = () => {
     });
   }, [audioState.responseAudio]);
 
-  /* -------------------------------------------------------------------------- */
   return {
     audioState,
     startRecording,
