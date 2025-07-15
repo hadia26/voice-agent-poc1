@@ -64,7 +64,17 @@ export const useAudioRecorder = () => {
       };
 
       try {
-        await audio.play();
+        audio.play().then(() => {
+  console.log("🔊 Playback started successfully");
+}).catch((err) => {
+  console.error("🔊 Playback failed:", err);
+  setAudioState(prev => ({
+    ...prev,
+    error: 'Audio playback failed.',
+    isPlaying: false,
+  }));
+});
+
       } catch (playError) {
         console.error('🔊 Audio playback failed:', playError);
         setAudioState(prev => ({
