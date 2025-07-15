@@ -34,36 +34,47 @@ const sendAudio = useCallback(async (audioBlob: Blob) => {
       body: formData,
     });
 
-    if (!response.ok) {
-      throw new Error('Failed to process audio');
-    }
+    if (!response.ok) throw new Error('Failed to process audio');
 
-    // ⬇️ Important: fully consume the stream and convert to blob
-    const audioBuffer = await response.arrayBuffer();
-    const responseAudioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+    const audioArrayBuffer = await response.arrayBuffer();
+    const responseAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' });
     const audioUrl = URL.createObjectURL(responseAudioBlob);
 
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
 
-    audio.onplay = () => setAudioState(prev => ({ ...prev, isPlaying: true }));
-    audio.onended = () => setAudioState(prev => ({ ...prev, isPlaying: false }));
-    audio.onerror = () => {
-      console.error('❌ Audio playback error');
-      setAudioState(prev => ({
-        ...prev,
-        error: 'Failed to play response audio',
-        isPlaying: false,
-      }));
+    // Clear previous event handlers
+    audio.onplay = null;
+    audio.onended = null;
+    audio.onerror = null;
+
+    audio.onplay = () => {
+      setAudioState(prev => ({ ...prev, isPlaying: true, error: null }));
     };
 
-    // ⬇️ Important: wait for playback and catch failure
-    await audio.play();
+    audio.onended = () => {
+      setAudioState(prev => ({ ...prev, isPlaying: false }));
+    };
 
+    // ⛔ Don’t trigger this unless .play() really fails
+    try {
+      await audio.play();
+    } catch (playbackError) {
+      console.error('❌ Playback failed:', playbackError);
+      setAudioState(prev => ({
+        ...prev,
+        error: 'Audio playback failed. Try again.',
+        isPlaying: false,
+      }));
+      return;
+    }
+
+    // Only set audio state after successful playback
     setAudioState(prev => ({
       ...prev,
       responseAudio: audioUrl,
       isProcessing: false,
+      error: null,
     }));
 
   } catch (error) {
