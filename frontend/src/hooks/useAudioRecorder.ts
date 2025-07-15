@@ -28,7 +28,7 @@ export const useAudioRecorder = () => {
       const formData = new FormData();
       formData.append('file', audioBlob, 'recording.wav');
 
-      const response = await fetch('https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev//transcribe-and-respond', {
+      fetch('https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond', {
         method: 'POST',
         body: formData,
       });
