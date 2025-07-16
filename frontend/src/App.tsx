@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { RotateCcw } from 'lucide-react';
-import useVoiceAgent from './hooks/useVoiceAgent';
+import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { useTheme } from './hooks/useTheme';
 import { ThemeSelector } from './components/ThemeSelector';
 import { RecordingButton } from './components/RecordingButton';
+import { AudioPlayer } from './components/AudioPlayer';
 import { StatusMessage } from './components/StatusMessage';
 import { WaveformAnimation } from './components/WaveformAnimation';
 
@@ -13,13 +14,11 @@ function App() {
     audioState,
     startRecording,
     stopRecording,
+    playResponse,
+    stopPlaying,
     clearError,
-  } = useVoiceAgent();
-
-  // Start recording automatically on load
-  useEffect(() => {
-    startRecording();
-  }, []);
+    reset,
+  } = useAudioRecorder();
 
   return (
     <div
@@ -65,10 +64,10 @@ function App() {
                   message="Processing your request..."
                 />
               )}
-              {audioState.isListening && (
+              {audioState.isRecording && (
                 <StatusMessage
                   type="info"
-                  message="Listening..."
+                  message="Listening... Click to stop and send"
                 />
               )}
             </div>
@@ -77,7 +76,7 @@ function App() {
             <div className="text-center mb-8">
               <div className="mb-6">
                 <RecordingButton
-                  isRecording={audioState.isListening}
+                  isRecording={audioState.isRecording}
                   onStartRecording={startRecording}
                   onStopRecording={stopRecording}
                   disabled={audioState.isProcessing}
@@ -85,25 +84,67 @@ function App() {
               </div>
 
               <div className="mb-6">
-                <WaveformAnimation isActive={audioState.isListening || audioState.isProcessing} />
+                <WaveformAnimation isActive={audioState.isRecording || audioState.isProcessing} />
               </div>
 
               <div className="mb-6">
-                {audioState.isListening ? (
+                {audioState.isRecording ? (
                   <p className="text-white/60">
-                    Listening... recording will stop and respond automatically
+                    Listening... recording will stop when you're done speaking
                   </p>
                 ) : audioState.isProcessing ? (
                   <p className="text-white">
                     Processing your message...
                   </p>
+                ) : audioState.responseAudio ? (
+                  <p className="text-white">
+                    Response ready to play
+                  </p>
                 ) : (
                   <p className="text-white/50">
-                    Starting conversation...
+                    Click to start conversation
                   </p>
                 )}
               </div>
+
+              {(audioState.audioBlob || audioState.responseAudio || audioState.isProcessing) && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={reset}
+                    disabled={audioState.isProcessing}
+                    className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <RotateCcw size={20} />
+                    New Conversation
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* Play Response Buttons */}
+            {audioState.responseAudio && (
+              <div className="flex justify-center items-center gap-4 mt-6">
+                <button
+                  onClick={() => playResponse()}
+                  className="px-6 py-3 rounded-lg font-medium text-white bg-[#0078c3] hover:bg-[#005fa3] transition-all duration-200"
+                >
+                  ▶️ Play Response
+                </button>
+
+                <button
+                  onClick={stopPlaying}
+                  className="px-6 py-3 rounded-lg font-medium text-white bg-red-600 hover:bg-red-700 transition-all duration-200"
+                >
+                  ⏹️ Stop
+                </button>
+              </div>
+            )}
+
+            {audioState.responseAudio && (
+              <p className="text-sm text-white/60 mt-2 text-center">
+                Tap play to hear the response.
+              </p>
+            )}
           </div>
 
           {/* Instructions */}
@@ -114,11 +155,11 @@ function App() {
             >
               <h3 className="font-semibold mb-2 text-white">How to use:</h3>
               <ol className="text-sm space-y-1 text-white/60">
-                <li>1. Starts listening automatically on load</li>
+                <li>1. Click the microphone to start recording</li>
                 <li>2. Speak your question or request</li>
-                <li>3. Recording will stop, process, and play reply</li>
-                <li>4. Automatically listens again for next question</li>
-                <li>5. Stop anytime with stop button</li>
+                <li>3. Recording will automatically stop when you're done speaking</li>
+                <li>4. Tap play to hear the AI response</li>
+                <li>5. Start a new conversation anytime</li>
               </ol>
             </div>
           </div>
