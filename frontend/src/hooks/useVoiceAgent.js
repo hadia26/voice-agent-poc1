@@ -2,19 +2,21 @@ import { useState, useRef } from 'react';
 
 export default function useVoiceAgent() {
   const [audioState, setAudioState] = useState({
-    isListening: false,
+    isRecording: false,         // matches your UI
     isProcessing: false,
     error: null,
   });
+
   const streamRef = useRef(null);
   const currentAudioRef = useRef(null);
   const stopRequestedRef = useRef(false);
 
-  const startConversationLoop = async () => {
+  // Start the automatic conversation loop
+  const startRecording = async () => {
     try {
       console.log('🎙 Starting conversation loop...');
       stopRequestedRef.current = false;
-      setAudioState({ isListening: true, isProcessing: false, error: null });
+      setAudioState({ isRecording: true, isProcessing: false, error: null });
 
       if (!streamRef.current) {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -27,6 +29,22 @@ export default function useVoiceAgent() {
     }
   };
 
+  // Stop the conversation loop
+  const stopRecording = () => {
+    console.log('🛑 Stopping conversation...');
+    stopRequestedRef.current = true;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+    setAudioState({ isRecording: false, isProcessing: false, error: null });
+  };
+
+  // Record, send to backend, play response, then repeat
   const recordAndSendChunk = async () => {
     if (stopRequestedRef.current) {
       console.log('🛑 Loop stopped by user.');
@@ -57,9 +75,8 @@ export default function useVoiceAgent() {
       if (ttsBlob) {
         playAudioAndContinue(ttsBlob);
       } else {
-        console.error('❌ No TTS audio received.');
-        // Optionally: start next chunk anyway
-        recordAndSendChunk();
+        console.error('❌ No TTS audio received. Trying next...');
+        recordAndSendChunk();  // keep going even if error
       }
     };
 
@@ -69,6 +86,7 @@ export default function useVoiceAgent() {
     }, 2000); // record 2s chunk
   };
 
+  // Play TTS audio, then continue loop
   const playAudioAndContinue = (ttsBlob) => {
     const audioUrl = URL.createObjectURL(ttsBlob);
     const audio = new Audio(audioUrl);
@@ -76,37 +94,24 @@ export default function useVoiceAgent() {
 
     audio.play();
     audio.onended = () => {
-      console.log('✅ Finished playing, recording next chunk...');
+      console.log('✅ Finished playing, starting next recording...');
       if (!stopRequestedRef.current) {
-        recordAndSendChunk(); // continue loop
+        recordAndSendChunk();
       }
     };
-  };
-
-  const stopConversation = () => {
-    console.log('🛑 Stopping conversation...');
-    stopRequestedRef.current = true;
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current = null;
-    }
-    setAudioState({ isListening: false, isProcessing: false, error: null });
   };
 
   const clearError = () => setAudioState((s) => ({ ...s, error: null }));
 
   return {
     audioState,
-    startConversationLoop,
-    stopConversation,
+    startRecording,
+    stopRecording,
     clearError,
   };
 }
 
+// Send audio to backend and get TTS audio blob
 async function sendAudioChunk(audioBlob) {
   const formData = new FormData();
   formData.append('file', audioBlob, 'chunk.webm');
@@ -119,7 +124,7 @@ async function sendAudioChunk(audioBlob) {
       console.error('Backend error:', await res.text());
       return null;
     }
-    return await res.blob();
+    return await res.blob(); // get audio back
   } catch (e) {
     console.error(e);
     return null;
