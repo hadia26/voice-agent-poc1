@@ -19,6 +19,9 @@ export const useAudioRecorder = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
+  // ✅ add ref to hold startRecording function
+  const startRecordingRef = useRef<() => void>(() => {});
+
   const sendAudio = useCallback(async (audioBlob: Blob) => {
     if (!audioBlob) return;
 
@@ -52,7 +55,14 @@ export const useAudioRecorder = () => {
       audioRef.current = audio;
 
       audio.onplay = () => setAudioState(p => ({ ...p, isPlaying: true }));
-      audio.onended = () => setAudioState(p => ({ ...p, isPlaying: false }));
+
+      // ✅ automatically restart recording after response finishes playing
+      audio.onended = () => {
+        setAudioState(p => ({ ...p, isPlaying: false }));
+        if (startRecordingRef.current) {
+          startRecordingRef.current();
+        }
+      };
 
       try {
         await audio.play();
@@ -73,7 +83,7 @@ export const useAudioRecorder = () => {
         isProcessing: false,
       }));
     }
-  }, []);
+  }, []); // keep deps empty to avoid circular
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -158,6 +168,9 @@ export const useAudioRecorder = () => {
       }));
     }
   }, [sendAudio]);
+
+  // ✅ store startRecording into ref to use safely in sendAudio
+  startRecordingRef.current = startRecording;
 
   const playResponse = useCallback((audioUrl?: string) => {
     const urlToPlay = audioUrl || audioState.responseAudio;
