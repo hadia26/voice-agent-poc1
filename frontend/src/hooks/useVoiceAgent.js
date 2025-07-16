@@ -8,23 +8,30 @@ export default function useVoiceAgent() {
     responseAudio: null,
   });
   const mediaRecorderRef = useRef(null);
-  const currentAudioRef = useRef(null); 
+  const currentAudioRef = useRef(null);
 
   const startRecording = async () => {
     try {
+      // Stop old recorder if running
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
 
       recorder.ondataavailable = async (e) => {
         if (e.data.size > 0) {
           setAudioState((s) => ({ ...s, isProcessing: true }));
+
           const ttsBlob = await sendAudioChunk(e.data);
           if (ttsBlob) {
-            playAndRestart(ttsBlob);
+            playResponseAndRestart(ttsBlob);
             setAudioState((s) => ({ ...s, responseAudio: ttsBlob }));
           } else {
             setAudioState((s) => ({ ...s, error: 'Transcription or TTS failed' }));
           }
+
           setAudioState((s) => ({ ...s, isProcessing: false }));
         }
       };
@@ -33,9 +40,10 @@ export default function useVoiceAgent() {
         setAudioState((s) => ({ ...s, isListening: false }));
       };
 
-      recorder.start(); // start immediately
+      recorder.start(); // start now
       mediaRecorderRef.current = recorder;
       setAudioState((s) => ({ ...s, isListening: true }));
+      console.log('🎙 Started recording...');
     } catch (err) {
       console.error(err);
       setAudioState((s) => ({ ...s, error: 'Could not access microphone' }));
@@ -43,13 +51,14 @@ export default function useVoiceAgent() {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       setAudioState((s) => ({ ...s, isListening: false }));
+      console.log('🛑 Stopped recording...');
     }
   };
 
-  const playAndRestart = (ttsBlob) => {
+  const playResponseAndRestart = (ttsBlob) => {
     const audioUrl = URL.createObjectURL(ttsBlob);
     const audio = new Audio(audioUrl);
     currentAudioRef.current = audio;
@@ -59,7 +68,17 @@ export default function useVoiceAgent() {
       startRecording();
     };
 
-    audio.play();
+    audio.onerror = (e) => {
+      console.error('Audio playback error:', e);
+      // Try to restart anyway
+      startRecording();
+    };
+
+    audio.play().catch((err) => {
+      console.error('Audio play failed:', err);
+      // Try to restart recording anyway
+      startRecording();
+    });
   };
 
   const clearError = () => setAudioState((s) => ({ ...s, error: null }));
@@ -86,7 +105,7 @@ async function sendAudioChunk(audioBlob) {
     }
     return await res.blob();
   } catch (e) {
-    console.error(e);
+    console.error('Fetch failed:', e);
     return null;
   }
 }
