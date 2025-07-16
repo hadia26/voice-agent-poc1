@@ -52,12 +52,7 @@ export const useAudioRecorder = () => {
       audioRef.current = audio;
 
       audio.onplay = () => setAudioState(p => ({ ...p, isPlaying: true }));
-
-      // ✅ CHANGE: automatically start recording again after playback
-      audio.onended = () => {
-        setAudioState(p => ({ ...p, isPlaying: false }));
-        startRecording();
-      };
+      audio.onended = () => setAudioState(p => ({ ...p, isPlaying: false }));
 
       try {
         await audio.play();
@@ -78,7 +73,7 @@ export const useAudioRecorder = () => {
         isProcessing: false,
       }));
     }
-  }, [startRecording]); // ✅ CHANGE: add startRecording as dependency
+  }, []);
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
