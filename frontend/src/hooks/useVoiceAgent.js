@@ -8,7 +8,7 @@ export default function useVoiceAgent() {
     responseAudio: null,
   });
   const mediaRecorderRef = useRef(null);
-  const currentAudioRef = useRef(null);
+  const currentAudioRef = useRef(null); 
 
   const startRecording = async () => {
     try {
