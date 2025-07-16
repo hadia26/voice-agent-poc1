@@ -8,17 +8,17 @@ import { AudioPlayer } from './components/AudioPlayer';
 import { StatusMessage } from './components/StatusMessage';
 import { WaveformAnimation } from './components/WaveformAnimation';
 
-function App() {
+
+
+  function App() {
   const { theme } = useTheme();
   const {
     audioState,
     startRecording,
     stopRecording,
-    playResponse,
-    stopPlaying,
     clearError,
-    reset,
-  } = useAudioRecorder();
+  } = useVoiceAgent();
+
 
   return (
     <div
