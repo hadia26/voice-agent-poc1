@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { AudioState } from '../types';
 
 export const useAudioRecorder = () => {
@@ -18,7 +18,6 @@ export const useAudioRecorder = () => {
   const silenceTimerRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const continueConversationRef = useRef(true); // <-- new flag to keep looping
 
   const sendAudio = useCallback(async (audioBlob: Blob) => {
     if (!audioBlob) return;
@@ -31,7 +30,10 @@ export const useAudioRecorder = () => {
 
       const response = await fetch(
         'https://d780937a-fd43-4ac4-94de-799bdb823306-00-3542e9irhula5.sisko.replit.dev/transcribe-and-respond',
-        { method: 'POST', body: formData }
+        {
+          method: 'POST',
+          body: formData,
+        }
       );
 
       if (!response.ok) throw new Error('Failed to process audio');
@@ -51,11 +53,10 @@ export const useAudioRecorder = () => {
 
       audio.onplay = () => setAudioState(p => ({ ...p, isPlaying: true }));
 
+      // ✅ CHANGED: start recording again after playback ends
       audio.onended = () => {
         setAudioState(p => ({ ...p, isPlaying: false }));
-        if (continueConversationRef.current) {
-          startRecording(); // start recording again automatically
-        }
+        startRecording();
       };
 
       try {
@@ -77,7 +78,7 @@ export const useAudioRecorder = () => {
         isProcessing: false,
       }));
     }
-  }, [startRecording]); // <-- add startRecording as dependency
+  }, [startRecording]); // ✅ add startRecording to dependencies
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -216,7 +217,6 @@ export const useAudioRecorder = () => {
       responseAudio: null,
       error: null,
     });
-    continueConversationRef.current = false; // stop auto mode on reset
   }, [audioState.responseAudio]);
 
   return {
@@ -228,6 +228,5 @@ export const useAudioRecorder = () => {
     stopPlaying,
     clearError,
     reset,
-    continueConversationRef, // export this if you want to control auto mode from UI
   };
 };
