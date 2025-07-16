@@ -8,12 +8,18 @@ export default function useVoiceAgent() {
     responseAudio: null,
   });
   const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
+  const currentAudioRef = useRef(null);
+  const streamRef = useRef(null);
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      setAudioState((s) => ({ ...s, error: null }));
+
+      if (!streamRef.current) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
+      mediaRecorderRef.current = new MediaRecorder(streamRef.current);
 
       mediaRecorderRef.current.ondataavailable = async (e) => {
         if (e.data.size > 0) {
@@ -22,8 +28,8 @@ export default function useVoiceAgent() {
 
           const ttsBlob = await sendAudioChunk(e.data);
           if (ttsBlob) {
-            playAudio(ttsBlob);
             setAudioState((s) => ({ ...s, responseAudio: ttsBlob }));
+            playAudio(ttsBlob);
           }
 
           setAudioState((s) => ({ ...s, isProcessing: false }));
@@ -35,7 +41,7 @@ export default function useVoiceAgent() {
         console.log('🛑 Recorder stopped');
       };
 
-      mediaRecorderRef.current.start(2000); // every 2 seconds
+      mediaRecorderRef.current.start(2000); // capture every 2s
       setAudioState((s) => ({ ...s, isRecording: true }));
     } catch (err) {
       console.error(err);
@@ -43,27 +49,43 @@ export default function useVoiceAgent() {
     }
   };
 
+  const playAudio = (audioBlob) => {
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    currentAudioRef.current = audio;
+
+    audio.play();
+    audio.onended = () => {
+      console.log('✅ Finished playing, start recording again...');
+      startRecording(); // restart loop
+    };
+  };
+
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
     setAudioState((s) => ({ ...s, isRecording: false }));
   };
 
   const playResponse = () => {
     if (audioState.responseAudio) {
-      const audioUrl = URL.createObjectURL(audioState.responseAudio);
-      const audio = new Audio(audioUrl);
-      audio.play();
+      playAudio(audioState.responseAudio);
     }
   };
 
   const stopPlaying = () => {
-    // optional: track current Audio instance & stop it
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+    }
   };
 
   const clearError = () => setAudioState((s) => ({ ...s, error: null }));
 
   const reset = () => {
     stopRecording();
+    stopPlaying();
     setAudioState({
       isRecording: false,
       isProcessing: false,
@@ -95,7 +117,7 @@ async function sendAudioChunk(audioBlob) {
       console.error('Backend error:', await res.text());
       return null;
     }
-    return await res.blob(); // reply audio
+    return await res.blob(); // backend reply audio
   } catch (e) {
     console.error(e);
     return null;
