@@ -1,6 +1,6 @@
 import React from 'react';
 import { RotateCcw } from 'lucide-react';
-import { useAudioRecorder } from './hooks/useAudioRecorder';
+import useVoiceAgent from './hooks/useVoiceAgent';
 import { useTheme } from './hooks/useTheme';
 import { ThemeSelector } from './components/ThemeSelector';
 import { RecordingButton } from './components/RecordingButton';
