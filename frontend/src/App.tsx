@@ -7,6 +7,8 @@ import { RecordingButton } from './components/RecordingButton';
 import { AudioPlayer } from './components/AudioPlayer';
 import { StatusMessage } from './components/StatusMessage';
 import { WaveformAnimation } from './components/WaveformAnimation';
+import React, { useEffect } from 'react';
+
 
 
 
@@ -18,7 +20,9 @@ import { WaveformAnimation } from './components/WaveformAnimation';
     stopRecording,
     clearError,
   } = useVoiceAgent();
-
+   useEffect(() => {
+    startRecording();
+  }, []);
 
   return (
     <div
