@@ -2,112 +2,114 @@ import { useState, useRef } from 'react';
 
 export default function useVoiceAgent() {
   const [audioState, setAudioState] = useState({
-    isRecording: false,
+    isListening: false,
     isProcessing: false,
     error: null,
-    responseAudio: null,
   });
-  const mediaRecorderRef = useRef(null);
-  const currentAudioRef = useRef(null);
   const streamRef = useRef(null);
+  const currentAudioRef = useRef(null);
+  const stopRequestedRef = useRef(false);
 
-  const startRecording = async () => {
+  const startConversationLoop = async () => {
     try {
-      setAudioState((s) => ({ ...s, error: null }));
+      console.log('🎙 Starting conversation loop...');
+      stopRequestedRef.current = false;
+      setAudioState({ isListening: true, isProcessing: false, error: null });
 
       if (!streamRef.current) {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
-      mediaRecorderRef.current = new MediaRecorder(streamRef.current);
-
-      mediaRecorderRef.current.ondataavailable = async (e) => {
-        if (e.data.size > 0) {
-          console.log('🎙 Sending chunk to backend...');
-          setAudioState((s) => ({ ...s, isProcessing: true }));
-
-          const ttsBlob = await sendAudioChunk(e.data);
-          if (ttsBlob) {
-            setAudioState((s) => ({ ...s, responseAudio: ttsBlob }));
-            playAudio(ttsBlob);
-          }
-
-          setAudioState((s) => ({ ...s, isProcessing: false }));
-        }
-      };
-
-      mediaRecorderRef.current.onstop = () => {
-        setAudioState((s) => ({ ...s, isRecording: false }));
-        console.log('🛑 Recorder stopped');
-      };
-
-      mediaRecorderRef.current.start(2000); // capture every 2s
-      setAudioState((s) => ({ ...s, isRecording: true }));
+      await recordAndSendChunk();
     } catch (err) {
       console.error(err);
       setAudioState((s) => ({ ...s, error: 'Could not access microphone' }));
     }
   };
 
-  const playAudio = (audioBlob) => {
-    const audioUrl = URL.createObjectURL(audioBlob);
+  const recordAndSendChunk = async () => {
+    if (stopRequestedRef.current) {
+      console.log('🛑 Loop stopped by user.');
+      return;
+    }
+
+    console.log('🎤 Recording chunk...');
+    const mediaRecorder = new MediaRecorder(streamRef.current);
+    const chunks = [];
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        chunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.onstop = async () => {
+      if (stopRequestedRef.current) return;
+
+      const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+      setAudioState((s) => ({ ...s, isProcessing: true }));
+
+      console.log('📤 Sending chunk to backend...');
+      const ttsBlob = await sendAudioChunk(audioBlob);
+
+      setAudioState((s) => ({ ...s, isProcessing: false }));
+
+      if (ttsBlob) {
+        playAudioAndContinue(ttsBlob);
+      } else {
+        console.error('❌ No TTS audio received.');
+        // Optionally: start next chunk anyway
+        recordAndSendChunk();
+      }
+    };
+
+    mediaRecorder.start();
+    setTimeout(() => {
+      mediaRecorder.stop();
+    }, 2000); // record 2s chunk
+  };
+
+  const playAudioAndContinue = (ttsBlob) => {
+    const audioUrl = URL.createObjectURL(ttsBlob);
     const audio = new Audio(audioUrl);
     currentAudioRef.current = audio;
 
     audio.play();
     audio.onended = () => {
-      console.log('✅ Finished playing, start recording again...');
-      startRecording(); // restart loop
+      console.log('✅ Finished playing, recording next chunk...');
+      if (!stopRequestedRef.current) {
+        recordAndSendChunk(); // continue loop
+      }
     };
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    setAudioState((s) => ({ ...s, isRecording: false }));
-  };
-
-  const playResponse = () => {
-    if (audioState.responseAudio) {
-      playAudio(audioState.responseAudio);
+  const stopConversation = () => {
+    console.log('🛑 Stopping conversation...');
+    stopRequestedRef.current = true;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
-  };
-
-  const stopPlaying = () => {
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
-      currentAudioRef.current.currentTime = 0;
+      currentAudioRef.current = null;
     }
+    setAudioState({ isListening: false, isProcessing: false, error: null });
   };
 
   const clearError = () => setAudioState((s) => ({ ...s, error: null }));
 
-  const reset = () => {
-    stopRecording();
-    stopPlaying();
-    setAudioState({
-      isRecording: false,
-      isProcessing: false,
-      error: null,
-      responseAudio: null,
-    });
-  };
-
   return {
     audioState,
-    startRecording,
-    stopRecording,
-    playResponse,
-    stopPlaying,
+    startConversationLoop,
+    stopConversation,
     clearError,
-    reset,
   };
 }
 
 async function sendAudioChunk(audioBlob) {
   const formData = new FormData();
-  formData.append('file', audioBlob, 'chunk.wav');
+  formData.append('file', audioBlob, 'chunk.webm');
   try {
     const res = await fetch('http://127.0.0.1:8000/transcribe-and-respond', {
       method: 'POST',
@@ -117,7 +119,7 @@ async function sendAudioChunk(audioBlob) {
       console.error('Backend error:', await res.text());
       return null;
     }
-    return await res.blob(); // backend reply audio
+    return await res.blob();
   } catch (e) {
     console.error(e);
     return null;
